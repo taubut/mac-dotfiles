@@ -1,0 +1,28 @@
+#!/bin/bash
+
+if [ -z "$1" ]; then
+    echo "Usage: catppuccinify <image> [flavor]"
+    echo "Flavors: latte, frappe, macchiato (default), mocha, oled"
+    exit 1
+fi
+
+INPUT="$1"
+FLAVOR="${2:-macchiato}"
+
+if [ ! -f "$INPUT" ]; then
+    echo "Error: file '$INPUT' not found"
+    exit 1
+fi
+
+EXTENSION="${INPUT##*.}"
+BASENAME="${INPUT%.*}"
+OUTPUT="${BASENAME}-catppuccin-${FLAVOR}.${EXTENSION}"
+
+lutgen apply -p "catppuccin-${FLAVOR}" "$INPUT" -o "$OUTPUT"
+
+if [ $? -eq 0 ]; then
+    echo "Saved to $OUTPUT"
+else
+    echo "Error: lutgen failed"
+    exit 1
+fi
