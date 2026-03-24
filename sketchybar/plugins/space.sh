@@ -34,7 +34,8 @@ if [ "$FOCUSED_WORKSPACE" = "$SPACE_NUM" ]; then
         label="${NAMES}"
 else
     sketchybar --set $NAME \
-        background.drawing=off \
+        background.drawing=on \
+        background.color=$BASE \
         icon.color=$PEACH \
         label.drawing=on \
         label.color=$PEACH \

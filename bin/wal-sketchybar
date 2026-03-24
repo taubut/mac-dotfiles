@@ -1,0 +1,245 @@
+#!/bin/bash
+# Reads pywal colors from ~/.cache/wal/colors.json and updates sketchybar colors.sh
+# Then restarts sketchybar
+
+COLORS_JSON="$HOME/.cache/wal/colors.json"
+SKETCHYBAR_COLORS="$HOME/.config/sketchybar/colors.sh"
+
+if [ ! -f "$COLORS_JSON" ]; then
+    echo "No pywal colors found"
+    exit 1
+fi
+
+# Read colors from JSON using python
+read_color() {
+    python3 -c "
+import json, sys
+with open('$COLORS_JSON') as f:
+    data = json.load(f)
+path = sys.argv[1].split('.')
+val = data
+for p in path:
+    val = val[p]
+# Convert #RRGGBB to 0xffRRGGBB
+print('0xff' + val.lstrip('#'))
+" "$1"
+}
+
+# Use python to pick the best accent (most saturated) and build colors.sh
+python3 << 'PYEOF'
+import json, colorsys, os
+
+with open(os.path.expanduser("~/.cache/wal/colors.json")) as f:
+    data = json.load(f)
+
+bg = data["special"]["background"]
+fg = data["special"]["foreground"]
+colors = [data["colors"][f"color{i}"] for i in range(1, 8)]
+
+def hex_to_rgb(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i+2], 16) / 255.0 for i in (0, 2, 4))
+
+def saturation(h):
+    r, g, b = hex_to_rgb(h)
+    _, s, v = colorsys.rgb_to_hsv(r, g, b)
+    return s * v  # weight by brightness so dark muddy colors don't win
+
+# Sort by saturation, pick most vibrant as accent
+ranked = sorted(colors, key=saturation, reverse=True)
+accent = ranked[0]
+secondary = ranked[1]
+tertiary = ranked[2]
+
+# Less saturated ones for surfaces/overlays
+muted = sorted(colors, key=saturation)
+
+def to_skb(hex_color):
+    return "0xff" + hex_color.lstrip("#")
+
+out = f"""#!/bin/bash
+
+# Colors generated from wallpaper via pywal
+export BASE={to_skb(bg)}
+export MANTLE={to_skb(bg)}
+export CRUST={to_skb(bg)}
+export SURFACE0={to_skb(muted[0])}
+export SURFACE1={to_skb(muted[1])}
+export SURFACE2={to_skb(muted[2])}
+export TEXT={to_skb(fg)}
+export SUBTEXT1={to_skb(data["colors"]["color7"])}
+export SUBTEXT0={to_skb(data["colors"]["color8"] if "color8" in data["colors"] else fg)}
+export OVERLAY0={to_skb(muted[3] if len(muted) > 3 else muted[-1])}
+export OVERLAY1={to_skb(muted[4] if len(muted) > 4 else muted[-1])}
+export PEACH={to_skb(accent)}
+export RED={to_skb(secondary)}
+export GREEN={to_skb(tertiary)}
+export BLUE={to_skb(ranked[3] if len(ranked) > 3 else secondary)}
+export YELLOW={to_skb(ranked[4] if len(ranked) > 4 else tertiary)}
+export MAUVE={to_skb(ranked[5] if len(ranked) > 5 else secondary)}
+export TEAL={to_skb(ranked[6] if len(ranked) > 6 else tertiary)}
+export TRANSPARENT=0x00000000
+"""
+
+with open(os.path.expanduser("~/.config/sketchybar/colors.sh"), "w") as f:
+    f.write(out)
+
+# Also write accent hex for borders script
+with open("/tmp/wal_accent_hex", "w") as f:
+    f.write(accent.lstrip("#"))
+with open("/tmp/wal_inactive_hex", "w") as f:
+    f.write(muted[1].lstrip("#"))
+
+# Generate Fresh editor theme
+def to_rgb(h):
+    h = h.lstrip("#")
+    return [int(h[i:i+2], 16) for i in (0, 2, 4)]
+
+bg_rgb = to_rgb(bg)
+fg_rgb = to_rgb(fg)
+accent_rgb = to_rgb(accent)
+secondary_rgb = to_rgb(secondary)
+tertiary_rgb = to_rgb(tertiary)
+muted0_rgb = to_rgb(muted[0])
+muted1_rgb = to_rgb(muted[1])
+muted2_rgb = to_rgb(muted[2])
+muted3_rgb = to_rgb(muted[3] if len(muted) > 3 else muted[-1])
+color7_rgb = to_rgb(data["colors"]["color7"])
+color8_rgb = to_rgb(data["colors"]["color8"] if "color8" in data["colors"] else fg)
+
+# Slightly lighter bg for selections/current line
+sel_rgb = [min(255, c + 20) for c in bg_rgb]
+curline_rgb = [min(255, c + 10) for c in bg_rgb]
+# Darker variant for error/warning backgrounds
+err_bg = [min(255, max(0, bg_rgb[0] + 24)), max(0, bg_rgb[1] - 10), max(0, bg_rgb[2] - 10)]
+warn_bg = [min(255, max(0, bg_rgb[0] + 14)), min(255, max(0, bg_rgb[1] + 10)), max(0, bg_rgb[2] - 10)]
+info_bg = [max(0, bg_rgb[0] - 5), min(255, bg_rgb[1] + 10), min(255, bg_rgb[2] + 20)]
+
+fresh_theme = {
+    "name": "pywal",
+    "editor": {
+        "bg": bg_rgb, "fg": fg_rgb, "cursor": accent_rgb,
+        "selection_bg": sel_rgb, "current_line_bg": curline_rgb,
+        "line_number_fg": muted3_rgb, "line_number_bg": bg_rgb,
+        "whitespace_indicator_fg": sel_rgb
+    },
+    "ui": {
+        "tab_active_fg": bg_rgb, "tab_active_bg": accent_rgb,
+        "tab_inactive_fg": fg_rgb, "tab_inactive_bg": sel_rgb,
+        "tab_separator_bg": bg_rgb, "tab_hover_bg": muted1_rgb,
+        "status_bar_fg": bg_rgb, "status_bar_bg": accent_rgb,
+        "prompt_fg": bg_rgb, "prompt_bg": tertiary_rgb,
+        "prompt_selection_fg": fg_rgb, "prompt_selection_bg": accent_rgb,
+        "popup_border_fg": accent_rgb, "popup_bg": bg_rgb,
+        "popup_selection_bg": accent_rgb, "popup_text_fg": fg_rgb,
+        "suggestion_bg": bg_rgb, "suggestion_selected_bg": accent_rgb,
+        "menu_bg": bg_rgb, "menu_fg": fg_rgb,
+        "menu_active_bg": sel_rgb, "menu_active_fg": secondary_rgb,
+        "menu_dropdown_bg": bg_rgb, "menu_dropdown_fg": fg_rgb,
+        "menu_highlight_bg": accent_rgb, "menu_highlight_fg": bg_rgb,
+        "menu_border_fg": muted3_rgb, "menu_separator_fg": muted3_rgb,
+        "menu_hover_bg": sel_rgb, "menu_hover_fg": fg_rgb,
+        "menu_disabled_fg": muted3_rgb, "menu_disabled_bg": bg_rgb,
+        "help_bg": bg_rgb, "help_fg": fg_rgb,
+        "help_key_fg": secondary_rgb, "help_separator_fg": muted3_rgb,
+        "help_indicator_fg": accent_rgb, "help_indicator_bg": bg_rgb,
+        "split_separator_fg": muted3_rgb,
+        "scrollbar_track_fg": sel_rgb, "scrollbar_thumb_fg": muted3_rgb,
+        "scrollbar_track_hover_fg": muted1_rgb, "scrollbar_thumb_hover_fg": secondary_rgb,
+        "settings_selected_bg": sel_rgb, "settings_selected_fg": fg_rgb
+    },
+    "search": {
+        "match_bg": tertiary_rgb, "match_fg": bg_rgb
+    },
+    "diagnostic": {
+        "error_fg": secondary_rgb, "error_bg": err_bg,
+        "warning_fg": tertiary_rgb, "warning_bg": warn_bg,
+        "info_fg": muted3_rgb, "info_bg": info_bg,
+        "hint_fg": muted3_rgb, "hint_bg": bg_rgb
+    },
+    "syntax": {
+        "keyword": accent_rgb, "string": tertiary_rgb,
+        "comment": muted3_rgb, "function": secondary_rgb,
+        "type": muted2_rgb, "variable": fg_rgb,
+        "constant": accent_rgb, "operator": accent_rgb
+    }
+}
+
+with open(os.path.expanduser("~/.config/fresh/themes/pywal.json"), "w") as f:
+    json.dump(fresh_theme, f, indent=2)
+
+# Set Fresh to use pywal theme
+config_path = os.path.expanduser("~/.config/fresh/config.json")
+if os.path.exists(config_path):
+    with open(config_path) as f:
+        config = json.load(f)
+    config["theme"] = "pywal"
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+
+# Generate Ghostty theme
+def to_hex(h):
+    return h.lstrip("#")
+
+ghostty_theme = f"""background = {to_hex(bg)}
+foreground = {to_hex(fg)}
+cursor-color = {to_hex(accent)}
+selection-background = {to_hex(muted[2] if len(muted) > 2 else muted[-1])}
+selection-foreground = {to_hex(fg)}
+palette = 0={to_hex(bg)}
+palette = 1={to_hex(accent)}
+palette = 2={to_hex(tertiary)}
+palette = 3={to_hex(ranked[4] if len(ranked) > 4 else tertiary)}
+palette = 4={to_hex(ranked[3] if len(ranked) > 3 else secondary)}
+palette = 5={to_hex(secondary)}
+palette = 6={to_hex(muted[3] if len(muted) > 3 else muted[-1])}
+palette = 7={to_hex(fg)}
+palette = 8={to_hex(data["colors"]["color8"] if "color8" in data["colors"] else fg)}
+palette = 9={to_hex(accent)}
+palette = 10={to_hex(tertiary)}
+palette = 11={to_hex(ranked[4] if len(ranked) > 4 else tertiary)}
+palette = 12={to_hex(ranked[3] if len(ranked) > 3 else secondary)}
+palette = 13={to_hex(secondary)}
+palette = 14={to_hex(muted[3] if len(muted) > 3 else muted[-1])}
+palette = 15={to_hex(fg)}
+"""
+
+themes_dir = os.path.expanduser("~/.config/ghostty/themes")
+os.makedirs(themes_dir, exist_ok=True)
+with open(os.path.join(themes_dir, "pywal"), "w") as f:
+    f.write(ghostty_theme)
+
+# Update Ghostty config to use pywal theme
+config_path = os.path.expanduser("~/.config/ghostty/config")
+if os.path.exists(config_path):
+    with open(config_path) as f:
+        lines = f.readlines()
+    with open(config_path, "w") as f:
+        for line in lines:
+            if line.startswith("theme ="):
+                f.write("theme = pywal\n")
+            else:
+                f.write(line)
+PYEOF
+
+# Restart sketchybar (synchronous so it picks up new colors)
+brew services restart sketchybar 2>/dev/null
+
+# Also update JankyBorders
+ACCENT_HEX=$(cat /tmp/wal_accent_hex)
+INACTIVE_HEX=$(cat /tmp/wal_inactive_hex)
+
+cat > "$HOME/.bordersrc" << EOF
+options=(
+    style=round
+    width=10.0
+    active_color=0xff${ACCENT_HEX}
+    inactive_color=0xff${INACTIVE_HEX}
+)
+borders "\${options[@]}"
+EOF
+
+# Restart borders
+brew services restart borders 2>/dev/null
+
+echo "SketchyBar and JankyBorders colors updated from wallpaper"

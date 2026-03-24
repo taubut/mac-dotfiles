@@ -44,8 +44,11 @@ if ask "Install packages? (aerospace, sketchybar, borders, lutgen, nowplaying-cl
     info "Installing AeroSpace..."
     brew install --cask nikitabobko/tap/aerospace
 
-    info "Installing lutgen and nowplaying-cli..."
-    brew install lutgen nowplaying-cli
+    info "Installing lutgen..."
+    brew install lutgen
+
+    info "Installing pywal..."
+    pip3 install pywal
 
     info "Installing SF Symbols (may require password)..."
     brew install --cask sf-symbols
@@ -86,10 +89,21 @@ if ask "Symlink config files?"; then
         link "$plugin" "$HOME/.config/sketchybar/plugins/$(basename "$plugin")"
     done
 
+    link "$DOTFILES_DIR/qutebrowser/config.py" "$HOME/.qutebrowser/config.py"
+
     mkdir -p "$HOME/.local/bin"
     link "$DOTFILES_DIR/bin/catppuccinify" "$HOME/.local/bin/catppuccinify"
+    link "$DOTFILES_DIR/bin/wal-sketchybar" "$HOME/.local/bin/wal-sketchybar"
+    link "$DOTFILES_DIR/bin/wal-restore-catppuccin" "$HOME/.local/bin/wal-restore-catppuccin"
 
     success "All configs linked"
+fi
+
+# ─── Wallpicker ───
+if ask "Compile wallpicker?"; then
+    info "Compiling wallpicker.swift..."
+    swiftc "$DOTFILES_DIR/wallpicker/wallpicker.swift" -o "$DOTFILES_DIR/wallpicker/wallpicker" -framework Cocoa -framework Foundation
+    success "Wallpicker compiled at $DOTFILES_DIR/wallpicker/wallpicker"
 fi
 
 # ─── Shell config ───
@@ -123,7 +137,9 @@ if ask "Start services? (borders, sketchybar, aerospace)"; then
     success "AeroSpace launched"
 fi
 
-# ─── Menu bar ───
-printf "\n\033[1;38;2;245;169;127m▸ Remember to hide your menu bar in System Settings > Control Center\033[0m\n"
+# ─── Menu bar & permissions ───
+printf "\n\033[1;38;2;245;169;127m▸ Remember to:\033[0m\n"
+printf "\033[1;38;2;245;169;127m  - Hide your menu bar in System Settings > Control Center\033[0m\n"
+printf "\033[1;38;2;245;169;127m  - Add sketchybar to System Settings > Privacy & Security > Accessibility\033[0m\n"
 
 printf "\n\033[1;38;2;166;218;149m  ✓ All done! Enjoy your rice 🍚\033[0m\n\n"
